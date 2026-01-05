@@ -1,0 +1,10 @@
+name = "RL"
+version = "0.1.0"
+defaultTargets = ["rl"]
+
+[[lean_lib]]
+name = "RL"
+
+[[lean_exe]]
+name = "rl"
+root = "Main"
