@@ -1,4 +1,4 @@
-import RL.MyTactic2
+import RL.MyTactic3
 import RL.InductRename
 
 variable (p q r : Prop)
@@ -14,18 +14,18 @@ example (h : p ∧ q ∧ r): r := by
 
 
 
-example : p ∨ q ↔ q ∨ p := sorry
+example : p ∨ q ↔ q ∨ p := by so
 
 -- associativity of ∧ and ∨
 theorem t1 : (p ∧ q) ∧ r ↔ p ∧ (q ∧ r) := by so
 
 #print t1
 
-example : (p ∨ q) ∨ r ↔ p ∨ (q ∨ r) := sorry
+example : (p ∨ q) ∨ r ↔ p ∨ (q ∨ r) := by so
 
 -- distributivity
-example : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) := sorry
-example : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) := sorry
+example : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) := by so
+example : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) := by so
 
 -- other properties
 example : (p → (q → r)) ↔ (p ∧ q → r) := by so

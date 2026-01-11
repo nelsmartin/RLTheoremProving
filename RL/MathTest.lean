@@ -1,117 +1,63 @@
 import RL.MyTactic3
-import RL.InductRename
-
-
-
+import RL.Tags
+set_option maxHeartbeats 2000000
 
 
 theorem add_zero (n : Nat) :  n + 0 = n := by
-  apply rfl
-
+  so
+attribute [my_search_tag] add_zero
 
 theorem add_assoc (m n k : Nat) : n + m + k = n + (m + k) := by
-  induction k with
-  | zero => apply Eq.refl
-  | succ k ih =>
-    apply congrArg Nat.succ
-    apply ih
+  so
+attribute [my_search_tag] add_assoc
 
 theorem zero_add (n : Nat): 0 + n = n := by
-  induction n with
-  | zero =>
-    apply Eq.refl
-  | succ i ih =>
-    apply congrArg Nat.succ
-    apply ih
-
+  so
+attribute [my_search_tag] zero_add
 
 theorem succ_add (n m : Nat) : n + 1 + m = (n + m) + 1 := by
-  induction m with
-  | zero =>
-    rw[add_zero, add_zero]
-  | succ m ih =>
-    apply congrArg Nat.succ
-    apply ih
-
-theorem succ_add' (n m : Nat) : n + 1 + m = (n + m) + 1 := by
-  induction m with
-  | zero =>
-    apply add_zero
-  | succ m ih =>
-    apply congrArg Nat.succ
-    exact ih
-
-theorem succ_add'' (n m : Nat) : n + 1 + m = (n + m) + 1 := by
-  sorry
-
+  so
+attribute [my_search_tag] succ_add
 
 theorem add_succ (n m : Nat) : n + m + 1 = (n + m) + 1 := by
-  induction n with
-  | zero => sorry
-  | succ i ih => rfl
+  so
+attribute [my_search_tag] succ_add
 
-
-theorem result (n m : Nat) : m + n = n + m := by
-  induction m with
-  | zero =>
-    apply zero_add
-  | succ i ih =>
-    rw[succ_add, add_succ]
-    apply congrArg Nat.succ
-    apply ih
-
-#print Nat.add_comm
-#print Nat.rec
-
-
-
-
-
-theorem add_one_ne_zero (n : Nat) : n + 1 ≠ 0 := nofun
-
-theorem zero_ne_add_one (n : Nat) : 0 ≠ n + 1 := by simp
-
-
-theorem add_assoc' (n m k : Nat) : (n + m) + k = n + (m + k) := by
-  sorry
-
+theorem add_comm (n m : Nat) : m + n = n + m := by
+  so
+attribute [my_search_tag] add_comm
 
 theorem add_left_comm (n m k : Nat) : n + (m + k) = m + (n + k) := by
-  sorry
+  so
+attribute [my_search_tag] add_left_comm
 
 theorem add_right_comm (n m k : Nat) : (n + m) + k = (n + k) + m := by
-  sorry
+  so
+attribute [my_search_tag] add_right_comm
 
-theorem add_left_cancel (n m k : Nat) : n + m = n + k → m = k := by
-  sorry
-
-theorem add_right_cancel (n m k : Nat) (h : n + m = k + m) : n = k := by
-  sorry
-
-theorem eq_zero_of_add_eq_zero (n m : Nat) : n + m = 0 → n = 0 ∧ m = 0 := by
-  sorry
-
-
-theorem eq_zero_of_add_eq_zero_left (n m : Nat) (h : n + m = 0) : m = 0 :=
-  sorry
 
 /-! # Nat.mul theorems -/
 
-theorem mul_zero (n : Nat) : n * 0 = 0 :=
-  rfl
+theorem mul_zero (n : Nat) : n * 0 = 0 := by
+  so
+attribute [my_search_tag] mul_zero
 
-theorem mul_succ (n m : Nat) : n * m.succ = n * m + n :=
-  rfl
+theorem mul_succ (n m : Nat) : n * m.succ = n * m + n := by
+  so
+attribute [my_search_tag] mul_succ
 
-theorem mul_add_one (n m : Nat) : n * (m + 1) = n * m + n :=
-  rfl
+theorem mul_add_one (n m : Nat) : n * (m + 1) = n * m + n := by
+  so
+attribute [my_search_tag] mul_add_one
 
 theorem zero_mul (n : Nat) : 0 * n = 0 := by
-  sorry
+  so
+attribute [my_search_tag] zero_mul
 
 
 theorem succ_mul (n m : Nat) : (n.succ) * m = (n * m) + m := by
   sorry
+
 theorem add_one_mul (n m : Nat) : (n + 1) * m = (n * m) + m := by
   sorry
 
@@ -119,10 +65,10 @@ theorem mul_comm : ∀ (n m : Nat), n * m = m * n := by
   sorry
 
 theorem mul_one : ∀ (n : Nat), n * 1 = n := by
-  sorry
+  so
 
 theorem one_mul (n : Nat) : 1 * n = n := by
-  sorry
+  so
 
 theorem left_distrib (n m k : Nat) : n * (m + k) = n * m + n * k := by
   sorry
@@ -153,12 +99,12 @@ theorem succ_lt_succ {n m : Nat} : n < m → n.succ < m.succ := by
 
 theorem le_of_lt_add_one {n m : Nat} : n < m + 1 → n ≤ m := by
   sorry
-
 theorem lt_add_one_of_le {n m : Nat} : n ≤ m → n < m + 1 := by
   sorry
 
 theorem sub_zero (n : Nat) : n - 0 = n := by
-  sorry
+  so
+attribute [my_search_tag] result
 
 theorem not_add_one_le_zero (n : Nat) : ¬ n + 1 ≤ 0 := by
   sorry

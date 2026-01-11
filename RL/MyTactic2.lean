@@ -100,6 +100,9 @@ elab "so" : tactic => do
 
 
 
+
+
+
         -- apply ctors
       if goalTy.isConstOf ``False then
         logInfo "goal is False"
@@ -140,7 +143,8 @@ example : (p ∧ q) ∨ (p ∧ r)  →  p ∧ (q ∨ r):= by so
 example : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) := by so
 
 
-
+example : p ∧ q ↔ q ∧ p := by
+  so
 /-
 let msg ← ppGoal goal
       let str := msg.pretty'
