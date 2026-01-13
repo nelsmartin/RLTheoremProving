@@ -104,6 +104,7 @@ elab "so" : tactic => do
         let induct_renameTactic := evalTactic (← `(tactic| induct_rename $ident:ident))
         let induct_renameLabel := s!"induct_rename {ldecl.userName}"
         searchStack ← tryTactic currState induct_renameTactic currTrace induct_renameLabel searchStack
+
         /-apply-/
         let applyTactic := evalTactic (← `(tactic| apply $ident:ident))
         let applyLabel := s!"apply {ldecl.userName}"
@@ -122,7 +123,6 @@ elab "so" : tactic => do
         | .inductInfo info =>
             for ctor in info.ctors do
               let ctorIdent := mkIdent ctor
-
               let ctorTactic := evalTactic (← `(tactic| apply $ctorIdent))
               let ctorLabel := s!"apply {ctor}"
               searchStack ← tryTactic currState ctorTactic currTrace ctorLabel searchStack
