@@ -154,7 +154,7 @@ theorem mul_idempotent_context
     rw [Nat.mul_comm]       -- b*(c*a) → (c*a)*b
     rw [Nat.mul_assoc]      -- (c*a)*b → c*(a*b)
     rw [Nat.mul_comm]       -- c*(a*b) → a*(b*c) -- Back to start
-
+    sorry
 
 theorem reverse₅ (a b c : Nat) : a * b * c = c * b * a := by
   rw[←Nat.mul_comm]
