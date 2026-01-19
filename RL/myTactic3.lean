@@ -161,3 +161,8 @@ attribute [my_search_tag] t1
 
 example (h : p ∧ q ∧ r): r := by
   so
+theorem mathd_numbertheory_207 : 8 * 9 ^ 2 + 5 * 9 + 2 = 695 := by so
+
+theorem mathd_numbertheory_483 (a : Nat → Nat) (h₀ : a 1 = 1) (h₁ : a 2 = 1)
+    (h₂ : ∀ n, a (n + 2) = a (n + 1) + a n) : a 100 % 4 = 3 := by
+    so

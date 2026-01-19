@@ -27,6 +27,7 @@ theorem add_comm (n m : Nat) : m + n = n + m := by
   so
 attribute [my_search_tag] add_comm
 
+#print add_comm
 theorem add_left_comm (n m k : Nat) : n + (m + k) = m + (n + k) := by
   so
 attribute [my_search_tag] add_left_comm
@@ -104,7 +105,7 @@ theorem lt_add_one_of_le {n m : Nat} : n ≤ m → n < m + 1 := by
 
 theorem sub_zero (n : Nat) : n - 0 = n := by
   so
-attribute [my_search_tag] result
+attribute [my_search_tag] sub_zero
 
 theorem not_add_one_le_zero (n : Nat) : ¬ n + 1 ≤ 0 := by
   sorry

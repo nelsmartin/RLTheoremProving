@@ -129,8 +129,15 @@ elab "so" : tactic => do
 
 
 
+theorem rotate₃ (a b c : Nat) : a * b * c = b * c * a := by
+  so
 
 
+theorem reverse₃ (a b c : Nat) : a * b * c = c * b * a := by
+ so
+
+theorem rotate₄ (a b c d : Nat) : a * b * c * d = b * c * d * a := by
+  sorry
 
 theorem mul_idempotent_context
   (a b c : Nat) :
@@ -140,13 +147,18 @@ theorem mul_idempotent_context
 
 
 
+  theorem reverse₄ (a b c : Nat) : a * b * c = c * b * a := by
+    rw [Nat.mul_assoc]      -- a*b*c → a*(b*c)
+    rw [Nat.mul_comm]       -- a*(b*c) → (b*c)*a
+    rw [Nat.mul_assoc]      -- (b*c)*a → b*(c*a)
+    rw [Nat.mul_comm]       -- b*(c*a) → (c*a)*b
+    rw [Nat.mul_assoc]      -- (c*a)*b → c*(a*b)
+    rw [Nat.mul_comm]       -- c*(a*b) → a*(b*c) -- Back to start
 
 
-
-
-
-
-
+theorem reverse₅ (a b c : Nat) : a * b * c = c * b * a := by
+  rw[←Nat.mul_comm]
+  sorry
 
 
 
