@@ -13,35 +13,51 @@ def localDeclToJson (ldecl : LocalDecl) : MetaM Json := do
     ("implicit", Json.bool ldecl.binderInfo.isImplicit)
   ]
 
-
-
+def goalToJson (goals : List MVarId) : MetaM Json := do
+  let jsonGoals ← goals.mapM fun mvarId => do
+    let g ← Meta.ppGoal mvarId
+    return ("goal", Json.str s!"{g}")
+  return Json.mkObj jsonGoals
 
 elab "printJSON" : tactic => do
-  let goal ← getMainGoal
-  let decl ← goal.getDecl
-  let lctx := decl.lctx
+  let goals ← getGoals
+  let goalJson ← goalToJson goals
+  logInfo m!"@@GOAL_JSON@@ {goalJson}"
 
-  let mut jsonDecls : Array Json := #[]
+  try
+    let goal ← getMainGoal
+    let decl ← goal.getDecl
+    let lctx := decl.lctx
 
-  for ldecl in lctx do
-    if ldecl.isImplementationDetail then
-      continue
-    let j ← localDeclToJson ldecl
-    jsonDecls := jsonDecls.push j
+    let mut jsonDecls : Array Json := #[]
 
-  logInfo m!"{Json.arr jsonDecls}"
+    for ldecl in lctx do
+      if ldecl.isImplementationDetail then
+        continue
+      let j ← localDeclToJson ldecl
+      jsonDecls := jsonDecls.push j
 
-
-
-
-
-
-
+    logInfo m!"@@LDECL_JSON@@ {Json.arr jsonDecls}"
+  catch e =>
+    -- Optional: tag errors too
+    logInfo m!"@@TACTIC_ERROR@@ {e.toMessageData}"
 
 
-theorem rotate₃ (a b c : Nat) : a * b * c = b * c * a := by
-  printJSON
+
+elab "my_rw" "[" rules:Lean.Parser.Tactic.rwRule,* "]" : tactic => do
+  try
+    evalTactic (← `(tactic| rw [$rules,*]))
+  catch _ =>
+    pure ()
+
+
+
+theorem rotate₃ (a b c : Nat) : a * b * c = a * b * c:= by
+
+
   sorry
+
+  printJSON
 
 
 /-
