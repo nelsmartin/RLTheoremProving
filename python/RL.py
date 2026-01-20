@@ -5,8 +5,6 @@ import numpy as np
 from torch import nn
 from torch.distributions import Categorical
 import matplotlib.pyplot as plt
-import re
-from collections import Counter
 
 PROJECT_PATH = "/Users/nelsmartin/Lean/RL"
 client = lc.LeanLSPClient(PROJECT_PATH)
@@ -43,128 +41,41 @@ def get_ldecls():
             ldecls.append(ldecl['userName'])
     return ldecls
 
-
 # ============================================================================
-# ENHANCED STATE ENCODER - Task-Specific Features
+# ULTRA-SIMPLE APPROACH: Direct Policy Table
 # ============================================================================
 
-class GoalEncoder:
+class SimplePolicyTable(nn.Module):
     """
-    Semantic encoder optimized for multiplication commutativity/associativity tasks
+    Learns a direct mapping: step_number -> action
+    For 2-step problems, this is the simplest approach.
     """
-    def __init__(self, feature_dim=64):
-        self.feature_dim = feature_dim
+    def __init__(self, max_steps=2):
+        super().__init__()
+        # For each step, output: [rule_logit_0, rule_logit_1, i_logits..., j_logits...]
+        # Rule: 2 options (mul_assoc vs mul_comm)
+        # Variables: 4 options each for i and j
         
-    def encode(self, goal_str: str, ldecls: list) -> torch.Tensor:
-        """
-        Extract task-specific features from goal string.
-        """
-        features = np.zeros(self.feature_dim, dtype=np.float32)
+        self.step_0_rule = nn.Parameter(torch.zeros(2))
+        self.step_0_i = nn.Parameter(torch.zeros(4))
+        self.step_0_j = nn.Parameter(torch.zeros(4))
         
-        if not goal_str:
-            return torch.tensor(features)
+        self.step_1_rule = nn.Parameter(torch.zeros(2))
+        self.step_1_i = nn.Parameter(torch.zeros(4))
+        self.step_1_j = nn.Parameter(torch.zeros(4))
         
-        # === BASIC FEATURES (0-9) ===
-        features[0] = min(len(goal_str) / 50.0, 1.0)  # Length
-        features[1] = goal_str.count('*') / 5.0        # Multiplications
-        features[2] = goal_str.count('(') / 3.0        # Parentheses (associativity)
-        features[3] = goal_str.count('=') / 2.0        # Equals
-        
-        # === VARIABLE FEATURES (10-19) ===
-        # Track which variables appear and in what order
-        var_list = ['a', 'b', 'c', 'd']
-        for i, var in enumerate(var_list):
-            if var in goal_str.lower():
-                features[10 + i] = goal_str.lower().count(var) / 3.0
-        
-        # === STRUCTURAL PATTERNS (20-39) ===
-        # These are KEY for the specific task
-        
-        # Pattern: "a * b * c" (left-associated, needs assoc)
-        if re.search(r'[a-z]\s*\*\s*[a-z]\s*\*\s*[a-z]', goal_str):
-            features[20] = 1.0
-        
-        # Pattern: "a * (b * c)" (right-associated)
-        if re.search(r'[a-z]\s*\*\s*\(\s*[a-z]\s*\*\s*[a-z]\s*\)', goal_str):
-            features[21] = 1.0
-        
-        # Pattern: "a * (c * b)" (target form)
-        if re.search(r'[a-z]\s*\*\s*\(\s*c\s*\*\s*b\s*\)', goal_str):
-            features[22] = 1.0
-        
-        # Pattern: "a * (b * c)" (intermediate form)
-        if re.search(r'[a-z]\s*\*\s*\(\s*b\s*\*\s*c\s*\)', goal_str):
-            features[23] = 1.0
-        
-        # Check if goal sides are equal (done!)
-        if '=' in goal_str:
-            parts = goal_str.split('=')
-            if len(parts) == 2:
-                left = parts[0].strip().replace(' ', '')
-                right = parts[1].strip().replace(' ', '')
-                if left == right:
-                    features[24] = 1.0  # Goal is trivially true
-        
-        # === STEP INDICATOR (40-41) ===
-        # Estimate which step we're on based on structure
-        
-        # If no parentheses on left, probably step 0 (need mul_assoc)
-        left_side = goal_str.split('=')[0] if '=' in goal_str else goal_str
-        if '(' not in left_side and '*' in left_side:
-            features[40] = 1.0  # Likely need mul_assoc
-        
-        # If parentheses exist but b and c are in wrong order, need mul_comm
-        if re.search(r'\(\s*b\s*\*\s*c\s*\)', goal_str):
-            features[41] = 1.0  # Likely need mul_comm b c
-        
-        # === VARIABLE ORDERING (42-51) ===
-        # For mul_comm, we need to know which variables to swap
-        
-        # Extract variable positions in the goal
-        vars_in_order = re.findall(r'\b[a-z]\b', goal_str.lower())
-        
-        # Encode first few variable positions
-        for i, var in enumerate(vars_in_order[:10]):
-            if var in ['a', 'b', 'c', 'd']:
-                var_idx = ord(var) - ord('a')
-                features[42 + i] = var_idx / 3.0  # Normalize to [0, 1]
-        
-        # === LDECLS CONTEXT (52-55) ===
-        # Information about available local declarations
-        if ldecls:
-            features[52] = len(ldecls) / 4.0
-            for i, decl in enumerate(ldecls[:4]):
-                if decl.lower() in ['a', 'b', 'c', 'd']:
-                    features[53 + (ord(decl.lower()) - ord('a'))] = 1.0
-        
-        # === N-GRAM FEATURES (56-63) ===
-        # Compact representation of goal structure
-        for i in range(min(8, len(goal_str) - 2)):
-            trigram = goal_str[i:i+3]
-            trigram_hash = hash(trigram) % 8
-            features[56 + trigram_hash] = min(features[56 + trigram_hash] + 0.3, 1.0)
-        
-        return torch.tensor(features)
+        # Add temperature parameter for exploration
+        self.temperature = 1.0
+    
+    def forward(self, step):
+        if step == 0:
+            return self.step_0_rule, self.step_0_i, self.step_0_j
+        else:
+            return self.step_1_rule, self.step_1_i, self.step_1_j
+    
+    def set_temperature(self, temp):
+        self.temperature = temp
 
-
-encoder = GoalEncoder(feature_dim=64)
-
-def encode_goal(goal: str, ldecls: list = None) -> torch.Tensor:
-    """Wrapper for encoder"""
-    if ldecls is None:
-        ldecls = []
-    return encoder.encode(goal, ldecls)
-
-
-# ============================================================================
-# NETWORK AND TRAINING CODE
-# ============================================================================
-
-def mask_logits(logits, valid_count):
-    if valid_count < logits.shape[0]:
-        logits = logits.clone()
-        logits[valid_count:] = -1e9
-    return logits
 
 def apply_action(action, ldecls):
     rule, i, j = action
@@ -176,7 +87,6 @@ def apply_action(action, ldecls):
             b = ldecls[j]
             tactic = f"my_rw [Nat.mul_comm {a} {b}]"
         else:
-            # Fallback if indices are invalid
             tactic = "my_rw [Nat.mul_comm]"
     
     content = sfc.get_file_content()
@@ -209,398 +119,258 @@ def apply_action(action, ldecls):
 def is_done():
     return get_goal_str() is None
 
-def compute_reward(prev_goal, current_goal, done, step):
-    """Shaped reward optimized for 2-step task"""
-    if done:
-        # HUGE reward for success - make this very attractive
-        return 1000.0
-    
-    # Step-based shaped rewards
-    if step == 0:
-        # After first step, reward if we added parentheses (mul_assoc worked)
-        if current_goal and prev_goal:
-            if '(' in current_goal and '(' not in prev_goal:
-                return 10.0  # Good! Applied mul_assoc
-            elif current_goal == prev_goal:
-                return -5.0  # Bad! No change
-    
-    elif step == 1:
-        # After second step, check if we're closer to solution
-        if current_goal and 'c * b' in current_goal:
-            return 50.0  # Very good! We have c * b now
-    
-    # Small penalty for each step
-    return -0.1
 
-
-class ActorCriticNet(nn.Module):
-    def __init__(self, state_dim, max_vars):
-        super().__init__()
-        # Deeper network for better memorization
-        self.shared = nn.Sequential(
-            nn.Linear(state_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-        )
-        
-        self.rule_head = nn.Linear(64, 2)
-        self.i_head = nn.Linear(64, max_vars)
-        self.j_head = nn.Linear(64, max_vars)
-        self.value_head = nn.Linear(64, 1)
-    
-    def forward(self, x):
-        h = self.shared(x)
-        return (
-            self.rule_head(h),
-            self.i_head(h),
-            self.j_head(h),
-            self.value_head(h)
-        )
-
-
-def sample_action_with_entropy(net, state, num_vars, epsilon=0.0, temperature=1.0):
+def sample_action(policy, step, num_vars, epsilon=0.0):
+    """Sample action from policy table"""
     if np.random.random() < epsilon:
+        # Random exploration
         rule = np.random.randint(0, 2)
-        if rule == 0:
-            action = (0, None, None)
-        else:
-            i = np.random.randint(0, num_vars) if num_vars > 0 else 0
-            j = np.random.randint(0, num_vars) if num_vars > 0 else 0
-            action = (1, i, j)
+        i = np.random.randint(0, max(1, num_vars))
+        j = np.random.randint(0, max(1, num_vars))
+        action = (rule, i, j)
         
-        rule_logits, i_logits, j_logits, value = net(state)
+        rule_logits, i_logits, j_logits = policy(step)
+        rule_dist = Categorical(logits=rule_logits / policy.temperature)
+        i_dist = Categorical(logits=i_logits[:num_vars] / policy.temperature)
+        j_dist = Categorical(logits=j_logits[:num_vars] / policy.temperature)
         
-        rule_dist = Categorical(logits=rule_logits / temperature)
         logp = rule_dist.log_prob(torch.tensor(rule))
-        entropy = rule_dist.entropy()
+        logp = logp + i_dist.log_prob(torch.tensor(i))
+        logp = logp + j_dist.log_prob(torch.tensor(j))
         
-        if rule == 1 and num_vars > 0:
-            i_logits = mask_logits(i_logits, num_vars)
-            j_logits = mask_logits(j_logits, num_vars)
-            i_dist = Categorical(logits=i_logits / temperature)
-            j_dist = Categorical(logits=j_logits / temperature)
-            logp = logp + i_dist.log_prob(torch.tensor(i)) + j_dist.log_prob(torch.tensor(j))
-            entropy = entropy + i_dist.entropy() + j_dist.entropy()
+        entropy = rule_dist.entropy() + i_dist.entropy() + j_dist.entropy()
         
-        return action, logp, value, entropy
+        return action, logp, entropy
     
-    rule_logits, i_logits, j_logits, value = net(state)
-
-    rule_dist = Categorical(logits=rule_logits / temperature)
+    # Policy sampling
+    rule_logits, i_logits, j_logits = policy(step)
+    
+    rule_dist = Categorical(logits=rule_logits / policy.temperature)
     rule = rule_dist.sample()
-    logp = rule_dist.log_prob(rule)
-    entropy = rule_dist.entropy()
-
-    if rule.item() == 0:
-        return (0, None, None), logp, value, entropy
-
-    if num_vars > 0:
-        i_logits = mask_logits(i_logits, num_vars)
-        j_logits = mask_logits(j_logits, num_vars)
-
-        i_dist = Categorical(logits=i_logits / temperature)
-        j_dist = Categorical(logits=j_logits / temperature)
-
-        i = i_dist.sample()
-        j = j_dist.sample()
-
-        logp = logp + i_dist.log_prob(i) + j_dist.log_prob(j)
-        entropy = entropy + i_dist.entropy() + j_dist.entropy()
-
-        return (1, i.item(), j.item()), logp, value, entropy
-    else:
-        return (1, 0, 0), logp, value, entropy
-
-
-def run_episode(net, max_steps=2, epsilon=0.0, temperature=1.0):
-    log_probs = []
-    rewards = []
-    values = []
-    entropies = []
     
-    prev_goal = get_goal_str()
+    i_dist = Categorical(logits=i_logits[:num_vars] / policy.temperature)
+    i = i_dist.sample()
+    
+    j_dist = Categorical(logits=j_logits[:num_vars] / policy.temperature)
+    j = j_dist.sample()
+    
+    logp = rule_dist.log_prob(rule) + i_dist.log_prob(i) + j_dist.log_prob(j)
+    entropy = rule_dist.entropy() + i_dist.entropy() + j_dist.entropy()
+    
+    return (rule.item(), i.item(), j.item()), logp, entropy
+
+
+def run_episode(policy, max_steps=2, epsilon=0.0):
+    """Run one episode"""
+    log_probs = []
+    entropies = []
     
     for step in range(max_steps):
         goal = get_goal_str()
+        if goal is None:
+            return True, log_probs, entropies  # Success!
+            
         ldecls = get_ldecls()
-        num_vars = len(ldecls) if ldecls else 0
-
-        state = encode_goal(goal, ldecls)
-        action, logp, value, entropy = sample_action_with_entropy(
-            net, state, num_vars, epsilon, temperature
-        )
-
-        apply_action(action, ldecls)
-
-        done = is_done()
-        current_goal = get_goal_str()
-        reward = compute_reward(prev_goal, current_goal, done, step)
-
+        num_vars = len(ldecls) if ldecls else 3
+        
+        action, logp, entropy = sample_action(policy, step, num_vars, epsilon)
+        
         log_probs.append(logp)
-        values.append(value)
-        rewards.append(reward)
         entropies.append(entropy)
         
-        prev_goal = current_goal
+        apply_action(action, ldecls)
         
-        if done:
-            break
+        if is_done():
+            return True, log_probs, entropies
+    
+    # Failed to complete in max_steps
+    return False, log_probs, entropies
+
+
+def compute_loss(log_probs, entropies, success, entropy_coef=0.1):
+    """
+    Simple REINFORCE loss:
+    - If success: maximize log_probs (reward = 1)
+    - If failure: minimize log_probs (reward = 0)
+    - Always maximize entropy
+    """
+    if len(log_probs) == 0:
+        return torch.tensor(0.0)
     
     log_probs = torch.stack(log_probs)
-    values = torch.cat(values)
-    rewards = torch.tensor(rewards, dtype=torch.float32)
     entropies = torch.stack(entropies)
     
-    return log_probs, values, rewards, entropies
-
-
-def compute_returns(rewards, gamma=0.95):  # Higher gamma for short episodes
-    returns = []
-    G = 0
-    for r in reversed(rewards.tolist()):
-        G = r + gamma * G
-        returns.insert(0, G)
-    return torch.tensor(returns, dtype=torch.float32)
-
-
-def actor_critic_loss_with_adaptive_entropy(log_probs, values, rewards, entropies, 
-                                             gamma=0.95, base_entropy_coef=0.2,
-                                             target_entropy=0.5):
-    returns = compute_returns(rewards, gamma)
+    if success:
+        # Maximize probability of actions that led to success
+        policy_loss = -log_probs.sum()
+    else:
+        # Minimize probability of actions that led to failure
+        policy_loss = log_probs.sum()
     
-    advantages = returns - values.detach()
+    # Always encourage exploration
+    entropy_bonus = -entropies.mean()
     
-    if len(advantages) > 1:
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-    
-    actor_loss = -(log_probs * advantages).mean()
-    critic_loss = nn.functional.mse_loss(values, returns)
-    entropy = entropies.mean()
-    
-    # Adaptive entropy - but lower target for memorization task
-    entropy_deficit = max(0, target_entropy - entropy.item())
-    adaptive_coef = base_entropy_coef + 1.0 * entropy_deficit
-    
-    total_loss = actor_loss + 0.5 * critic_loss - adaptive_coef * entropy
-    
-    return total_loss, actor_loss.item(), critic_loss.item(), entropy.item(), adaptive_coef
-
-
-def get_epsilon(episode, start_eps=0.5, end_eps=0.01, decay_episodes=1000):
-    """Aggressive epsilon decay - we want to memorize, not explore forever"""
-    if episode >= decay_episodes:
-        return end_eps
-    return start_eps - (start_eps - end_eps) * (episode / decay_episodes)
-
-
-def get_temperature(episode, start_temp=1.5, end_temp=0.8, decay_episodes=800):
-    """Lower final temperature for more deterministic policy"""
-    if episode >= decay_episodes:
-        return end_temp
-    return start_temp - (start_temp - end_temp) * (episode / decay_episodes)
+    return policy_loss + entropy_coef * entropy_bonus
 
 
 # ============================================================================
 # TRAINING
 # ============================================================================
 
-STATE_DIM = 64
-net = ActorCriticNet(STATE_DIM, max_vars=4)
-optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)  # Higher LR for faster learning
+policy = SimplePolicyTable(max_steps=2)
+optimizer = torch.optim.Adam(policy.parameters(), lr=0.1)  # High LR for fast learning
 
 returns_per_episode = []
 losses_per_episode = []
-actor_losses_per_episode = []
-critic_losses_per_episode = []
 entropies_per_episode = []
-epsilons_per_episode = []
-temperatures_per_episode = []
-entropy_coefs_per_episode = []
-success_episodes = []
-actions_taken = []  # Track what actions lead to success
 
 print("=" * 100)
-print("TRAINING FOR 2-STEP MEMORIZATION TASK")
+print("ULTRA-SIMPLE POLICY TABLE LEARNING")
 print("=" * 100)
-print("Task: a * b * c = a * (c * b)")
-print("Solution: [mul_assoc] → [mul_comm b c]")
-print(f"State dimension: {STATE_DIM} (task-optimized features)")
+print("Approach: Learn a direct step -> action mapping")
+print("No complex neural networks, no value functions, just pure policy learning")
 print("=" * 100)
-print(f"\n{'Episode':<8} {'Return':<10} {'Loss':<8} {'Entropy':<8} {'Eps':<6} {'Temp':<6} {'Success%':<10}")
+print(f"\n{'Episode':<8} {'Success':<8} {'Loss':<10} {'Entropy':<8} {'Success%':<10} {'Temp':<8}")
 print("-" * 100)
 
-consecutive_low_entropy = 0
-ENTROPY_THRESHOLD = 0.05  # Lower threshold for memorization
-RESTART_THRESHOLD = 100
+success_count = 0
+window = 50
 
-for episode in range(2000):
+for episode in range(500):
     sfc.open_file()
-
-    epsilon = get_epsilon(episode)
-    temperature = get_temperature(episode)
     
-    log_probs, values, rewards, entropies = run_episode(net, max_steps=2, epsilon=epsilon, temperature=temperature)
+    # Aggressive epsilon decay
+    epsilon = max(0.1, 0.8 - 0.7 * (episode / 300))
     
-    loss, actor_loss, critic_loss, entropy, entropy_coef = actor_critic_loss_with_adaptive_entropy(
-        log_probs, values, rewards, entropies, gamma=0.95, base_entropy_coef=0.2, target_entropy=0.5
-    )
-
+    # Temperature annealing for controlled exploration
+    temperature = max(0.5, 2.0 - 1.5 * (episode / 300))
+    policy.set_temperature(temperature)
+    
+    # Run episode
+    success, log_probs, entropies = run_episode(policy, max_steps=2, epsilon=epsilon)
+    
+    if success:
+        success_count += 1
+        returns_per_episode.append(1.0)
+    else:
+        returns_per_episode.append(0.0)
+    
+    # Compute loss
+    loss = compute_loss(log_probs, entropies, success, entropy_coef=0.1)
+    
+    # Update policy
     optimizer.zero_grad()
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+    torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
     optimizer.step()
-
-    total_return = rewards.sum().item()
-    returns_per_episode.append(total_return)
+    
     losses_per_episode.append(loss.item())
-    actor_losses_per_episode.append(actor_loss)
-    critic_losses_per_episode.append(critic_loss)
-    entropies_per_episode.append(entropy)
-    epsilons_per_episode.append(epsilon)
-    temperatures_per_episode.append(temperature)
-    entropy_coefs_per_episode.append(entropy_coef)
     
-    if total_return > 500:  # Success
-        success_episodes.append(episode)
-
-    if entropy < ENTROPY_THRESHOLD:
-        consecutive_low_entropy += 1
-    else:
-        consecutive_low_entropy = 0
+    avg_entropy = sum(e.item() for e in entropies) / len(entropies) if entropies else 0.0
+    entropies_per_episode.append(avg_entropy)
     
-    if consecutive_low_entropy >= RESTART_THRESHOLD:
-        print(f"\n*** ENTROPY COLLAPSE AT EPISODE {episode} - REINITIALIZING ***\n")
-        net = ActorCriticNet(STATE_DIM, max_vars=4)
-        optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
-        consecutive_low_entropy = 0
-
     if episode % 10 == 0:
-        recent_successes = sum(1 for r in returns_per_episode[-100:] if r > 500)
-        success_rate = recent_successes / min(len(returns_per_episode), 100) * 100
-        print(f"{episode:<8} {total_return:<10.1f} {loss.item():<8.3f} "
-              f"{entropy:<8.3f} {epsilon:<6.3f} {temperature:<6.3f} {success_rate:<10.1f}%")
+        recent_success = sum(returns_per_episode[-window:])
+        success_rate = recent_success / min(len(returns_per_episode), window) * 100
+        print(f"{episode:<8} {'✓' if success else '✗':<8} {loss.item():<10.3f} "
+              f"{avg_entropy:<8.3f} {success_rate:<10.1f}% {temperature:<8.2f}")
 
 # ============================================================================
 # FINAL EVALUATION
 # ============================================================================
 
 print("\n" + "=" * 100)
-print("FINAL EVALUATION (100 episodes with epsilon=0)")
+print("FINAL EVALUATION (100 episodes, greedy policy)")
 print("=" * 100)
 
+policy.set_temperature(0.1)  # Very low temperature = nearly deterministic
 eval_successes = 0
+
 for _ in range(100):
     sfc.open_file()
-    _, _, rewards, _ = run_episode(net, max_steps=2, epsilon=0.0, temperature=1.0)
-    if rewards.sum().item() > 500:
+    success, _, _ = run_episode(policy, max_steps=2, epsilon=0.0)
+    if success:
         eval_successes += 1
 
-print(f"Evaluation success rate: {eval_successes}% (with greedy policy)")
+print(f"Greedy policy success rate: {eval_successes}%")
+print(f"Total training successes: {success_count}")
+
+# Print learned policy
+print("\n" + "=" * 100)
+print("LEARNED POLICY")
+print("=" * 100)
+
+with torch.no_grad():
+    rule_0, i_0, j_0 = policy(0)
+    rule_1, i_1, j_1 = policy(1)
+    
+    print("Step 0:")
+    print(f"  Rule probabilities: mul_assoc={torch.softmax(rule_0, 0)[0]:.3f}, mul_comm={torch.softmax(rule_0, 0)[1]:.3f}")
+    print(f"  Variable i: {torch.softmax(i_0, 0).numpy()}")
+    print(f"  Variable j: {torch.softmax(j_0, 0).numpy()}")
+    
+    print("\nStep 1:")
+    print(f"  Rule probabilities: mul_assoc={torch.softmax(rule_1, 0)[0]:.3f}, mul_comm={torch.softmax(rule_1, 0)[1]:.3f}")
+    print(f"  Variable i: {torch.softmax(i_1, 0).numpy()}")
+    print(f"  Variable j: {torch.softmax(j_1, 0).numpy()}")
+
 print("=" * 100)
 
 # ============================================================================
 # PLOTTING
 # ============================================================================
 
-fig = plt.figure(figsize=(16, 10))
-episodes = np.arange(len(returns_per_episode))
-window = 50
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-# 1. Returns
-ax1 = plt.subplot(2, 3, 1)
-colors = ['green' if r > 500 else 'red' for r in returns_per_episode]
-ax1.scatter(episodes, returns_per_episode, alpha=0.5, s=10, c=colors)
+# Success over time
+axes[0, 0].scatter(range(len(returns_per_episode)), returns_per_episode, 
+                   alpha=0.5, s=10, c=['green' if r > 0.5 else 'red' for r in returns_per_episode])
 if len(returns_per_episode) >= window:
     ma = np.convolve(returns_per_episode, np.ones(window)/window, mode='valid')
-    ax1.plot(episodes[window-1:], ma, 'b-', linewidth=2)
-ax1.axhline(y=500, color='orange', linestyle='--', label='Success threshold')
-ax1.set_xlabel('Episode')
-ax1.set_ylabel('Return')
-ax1.set_title('Episode Returns')
-ax1.legend()
-ax1.grid(True, alpha=0.3)
+    axes[0, 0].plot(range(window-1, len(returns_per_episode)), ma, 'b-', linewidth=2)
+axes[0, 0].set_title('Episode Outcomes (green=success)')
+axes[0, 0].set_xlabel('Episode')
+axes[0, 0].set_ylabel('Success')
+axes[0, 0].grid(True, alpha=0.3)
 
-# 2. Success Rate
-ax2 = plt.subplot(2, 3, 2)
+# Success rate
 success_rate = []
-for i in range(0, len(returns_per_episode), window):
-    batch = returns_per_episode[i:i+window]
-    success_rate.append(sum(1 for r in batch if r > 500) / len(batch) * 100)
-ax2.plot(np.arange(0, len(returns_per_episode), window), success_rate, 'g-', linewidth=2, marker='o')
-ax2.axhline(y=eval_successes, color='red', linestyle='--', label=f'Final: {eval_successes}%')
-ax2.set_xlabel('Episode')
-ax2.set_ylabel('Success Rate (%)')
-ax2.set_title('Success Rate Over Training')
-ax2.legend()
-ax2.grid(True, alpha=0.3)
-ax2.set_ylim(0, 105)
+for i in range(0, len(returns_per_episode), 10):
+    batch = returns_per_episode[i:min(i+window, len(returns_per_episode))]
+    success_rate.append(sum(batch) / len(batch) * 100)
+axes[0, 1].plot(range(0, len(returns_per_episode), 10), success_rate, 
+                'g-', linewidth=2, marker='o')
+axes[0, 1].axhline(y=eval_successes, color='r', linestyle='--', 
+                   label=f'Final: {eval_successes}%')
+axes[0, 1].set_title('Success Rate Over Training')
+axes[0, 1].set_xlabel('Episode')
+axes[0, 1].set_ylabel('Success Rate (%)')
+axes[0, 1].legend()
+axes[0, 1].grid(True, alpha=0.3)
+axes[0, 1].set_ylim(0, 105)
 
-# 3. Loss
-ax3 = plt.subplot(2, 3, 3)
-ax3.plot(episodes, losses_per_episode, alpha=0.3)
-if len(losses_per_episode) >= window:
-    ma = np.convolve(losses_per_episode, np.ones(window)/window, mode='valid')
-    ax3.plot(episodes[window-1:], ma, 'r-', linewidth=2)
-ax3.set_xlabel('Episode')
-ax3.set_ylabel('Loss')
-ax3.set_title('Training Loss')
-ax3.grid(True, alpha=0.3)
+# Loss
+axes[1, 0].plot(losses_per_episode, alpha=0.5)
+if len(losses_per_episode) >= 20:
+    ma = np.convolve(losses_per_episode, np.ones(20)/20, mode='valid')
+    axes[1, 0].plot(range(19, len(losses_per_episode)), ma, 'r-', linewidth=2)
+axes[1, 0].set_title('Training Loss')
+axes[1, 0].set_xlabel('Episode')
+axes[1, 0].set_ylabel('Loss')
+axes[1, 0].grid(True, alpha=0.3)
 
-# 4. Entropy
-ax4 = plt.subplot(2, 3, 4)
-ax4.plot(episodes, entropies_per_episode, 'purple', alpha=0.5)
-if len(entropies_per_episode) >= window:
-    ma = np.convolve(entropies_per_episode, np.ones(window)/window, mode='valid')
-    ax4.plot(episodes[window-1:], ma, 'purple', linewidth=2)
-ax4.axhline(y=0.5, color='g', linestyle='--', alpha=0.5, label='Target')
-ax4.set_xlabel('Episode')
-ax4.set_ylabel('Entropy')
-ax4.set_title('Policy Entropy')
-ax4.legend()
-ax4.grid(True, alpha=0.3)
-
-# 5. Epsilon and Temperature
-ax5 = plt.subplot(2, 3, 5)
-ax5.plot(episodes, epsilons_per_episode, 'brown', label='Epsilon')
-ax5_twin = ax5.twinx()
-ax5_twin.plot(episodes, temperatures_per_episode, 'teal', label='Temperature')
-ax5.set_xlabel('Episode')
-ax5.set_ylabel('Epsilon', color='brown')
-ax5_twin.set_ylabel('Temperature', color='teal')
-ax5.set_title('Exploration Decay')
-ax5.legend(loc='upper left')
-ax5_twin.legend(loc='upper right')
-ax5.grid(True, alpha=0.3)
-
-# 6. Summary
-ax6 = plt.subplot(2, 3, 6)
-ax6.axis('off')
-final_success = sum(1 for r in returns_per_episode[-100:] if r > 500)
-summary = f"""
-MEMORIZATION TASK RESULTS
-
-Task: a * b * c = a * (c * b)
-Expected: ~100% success (2 deterministic steps)
-
-Training Performance:
-• Final 100-ep success: {final_success}%
-• Evaluation success: {eval_successes}%
-• Total successes: {len(success_episodes)}/{len(returns_per_episode)}
-
-Convergence:
-• Episodes to 50% success: {next((i*window for i, sr in enumerate(success_rate) if sr >= 50), 'N/A')}
-• Episodes to 90% success: {next((i*window for i, sr in enumerate(success_rate) if sr >= 90), 'N/A')}
-
-Status: {'✓ SOLVED' if eval_successes >= 90 else '⚠ NEEDS MORE TRAINING' if eval_successes >= 50 else '✗ NOT LEARNING'}
-"""
-ax6.text(0.1, 0.5, summary, fontsize=10, family='monospace',
-         verticalalignment='center', bbox=dict(boxstyle='round', facecolor='lightblue' if eval_successes >= 90 else 'lightyellow'))
+# Entropy
+axes[1, 1].plot(entropies_per_episode, 'purple', alpha=0.5)
+if len(entropies_per_episode) >= 20:
+    ma = np.convolve(entropies_per_episode, np.ones(20)/20, mode='valid')
+    axes[1, 1].plot(range(19, len(entropies_per_episode)), ma, 'purple', linewidth=2)
+axes[1, 1].set_title('Policy Entropy (Exploration)')
+axes[1, 1].set_xlabel('Episode')
+axes[1, 1].set_ylabel('Entropy')
+axes[1, 1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('memorization_task_results.png', dpi=150)
+plt.savefig('simple_policy_table.png', dpi=150)
 plt.show()
 
-print("\nPlot saved as 'memorization_task_results.png'")
+print("\nPlot saved as 'simple_policy_table.png'")
