@@ -163,7 +163,7 @@ def compute_reward(done):
     return -0.01  # small step penalty
 
 
-def run_episode(net, max_steps=2):
+def run_episode(net, max_steps=4):
     log_probs = []
     rewards = []
     # print("GOAL BEFORE: ", get_goal_str())
